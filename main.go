@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	config "github.com/Dreamacro/clash/config"
+	"github.com/astaxie/beego/logs"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
 	starlark "go.starlark.net/starlark"
@@ -26,7 +27,12 @@ const (
 func main() {
 	r := chi.NewRouter()
 	r.Get("/config", configHandler)
-	http.ListenAndServe("localhost:9999", r)
+	var port = "9999"
+	if portEnv := os.Getenv("PORT"); portEnv != "" {
+		port = portEnv
+	}
+	logs.Info("listenning on 0.0.0.0:" + port)
+	http.ListenAndServe("0.0.0.0:"+port, r)
 }
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
