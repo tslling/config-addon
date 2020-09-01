@@ -20,8 +20,8 @@ const (
 	modeInsert              = "insert"
 	modeAppend              = "append"
 	modeUpdate              = "update"
-	defaultOriginConfigPath = "./origin.yaml"
-	defaultAddonConfigPath  = "./addon.yaml"
+	defaultOriginConfigPath = "./.config/origin.yaml"
+	defaultAddonConfigPath  = "./.config/addon.yaml"
 )
 
 func main() {
@@ -37,14 +37,20 @@ func main() {
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	orginURL := query.Get("origin")
-	addonURL := query.Get("addon")
-	mode := query.Get("mode")
+	params := make([]string, 3)
+	paramNames := []string{"origin_url", "addon_url", "mode"}
+	for i, name := range paramNames {
+		params[i] = query.Get(name)
+		if params[i] == "" {
+			params[i] = os.Getenv(name)
+		}
+	}
+	originURL, addonURL, mode := params[0], params[1], params[2]
 	if mode == "" {
 		mode = modeInsert
 	}
 
-	originalConfig, err := getRawConfig(orginURL, defaultOriginConfigPath)
+	originalConfig, err := getRawConfig(originURL, defaultOriginConfigPath)
 	if err != nil {
 		render.JSON(w, r, map[string]string{
 			"err": fmt.Sprintf("%s", err.Error()),
