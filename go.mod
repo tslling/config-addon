@@ -1,4 +1,4 @@
-module github.com/tslling/test
+module github.com/tslling/config-addon
 
 go 1.13
 
