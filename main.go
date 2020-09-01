@@ -24,15 +24,25 @@ const (
 	defaultAddonConfigPath  = "./.config/addon.yaml"
 )
 
+var (
+	errNoParamNoFile = fmt.Errorf("no parameter provided and no default config file found")
+)
+
 func main() {
 	r := chi.NewRouter()
 	r.Get("/config", configHandler)
+	r.Get("/hello", hello)
 	var port = "9999"
 	if portEnv := os.Getenv("PORT"); portEnv != "" {
 		port = portEnv
 	}
-	logs.Info("listenning on 0.0.0.0:" + port)
-	http.ListenAndServe("0.0.0.0:"+port, r)
+	addr := "0.0.0.0:" + port
+	logs.Info("listenning on " + addr)
+	http.ListenAndServe(addr, r)
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+	render.JSON(w, r, render.M{"hello": "world"})
 }
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +63,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 	originalConfig, err := getRawConfig(originURL, defaultOriginConfigPath)
 	if err != nil {
 		render.JSON(w, r, map[string]string{
-			"err": fmt.Sprintf("%s", err.Error()),
+			"err": fmt.Sprintf("get origin config error: %s", err.Error()),
 		})
 		return
 	}
@@ -61,7 +71,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 	addonConfig, err := getRawConfig(addonURL, defaultAddonConfigPath)
 	if err != nil {
 		// addon url is empty and local addon file not exist -> ignore addon file
-		if !(os.IsNotExist(err) && addonURL == "") {
+		if err != errNoParamNoFile {
 			render.JSON(w, r, map[string]string{
 				"err": fmt.Sprintf("%s", err.Error()),
 			})
@@ -85,6 +95,9 @@ func getRawConfig(url string, localFile string) (*config.RawConfig, error) {
 	}
 	addon, err := ioutil.ReadFile(localFile)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errNoParamNoFile
+		}
 		return nil, err
 	}
 	addonConfig, err := config.UnmarshalRawConfig(addon)
