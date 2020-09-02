@@ -5,8 +5,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 
 	config "github.com/Dreamacro/clash/config"
 	"github.com/astaxie/beego/logs"
@@ -37,8 +39,22 @@ func main() {
 		port = portEnv
 	}
 	addr := "0.0.0.0:" + port
-	logs.Info("listenning on " + addr)
-	http.ListenAndServe(addr, r)
+
+	done := make(chan error, 1)
+	go func() {
+		logs.Info("listenning on " + addr)
+		err := http.ListenAndServe(addr, r)
+		done <- err
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	select {
+	case err := <-done:
+		logs.Error("%s\n", err.Error())
+	case s := <-sig:
+		logs.Error("terminated by signal:%s", s.String())
+	}
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
