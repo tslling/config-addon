@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 	"syscall"
 
 	config "github.com/Dreamacro/clash/config"
@@ -19,9 +18,6 @@ import (
 )
 
 const (
-	modeInsert              = "insert"
-	modeAppend              = "append"
-	modeUpdate              = "update"
 	defaultOriginConfigPath = "./.config/origin.yaml"
 	defaultAddonConfigPath  = "./.config/addon.yaml"
 )
@@ -64,17 +60,14 @@ func hello(w http.ResponseWriter, r *http.Request) {
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	params := make([]string, 3)
-	paramNames := []string{"origin_url", "addon_url", "mode"}
+	paramNames := []string{"origin_url", "addon_url"}
 	for i, name := range paramNames {
 		params[i] = query.Get(name)
 		if params[i] == "" {
 			params[i] = os.Getenv(name)
 		}
 	}
-	originURL, addonURL, mode := params[0], params[1], params[2]
-	if mode == "" {
-		mode = modeInsert
-	}
+	originURL, addonURL := params[0], params[1]
 
 	originalConfig, err := getRawConfig(originURL, defaultOriginConfigPath)
 	if err != nil {
@@ -95,7 +88,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	bs, err := composeConfig(originalConfig, addonConfig, mode)
+	bs, err := composeConfig(originalConfig, addonConfig)
 	if err != nil {
 		render.JSON(w, r, map[string]string{
 			"err": fmt.Sprintf("%s", err.Error()),
@@ -149,15 +142,15 @@ func downloadConfig(url string) (*config.RawConfig, error) {
 	return cfg, nil
 }
 
-func composeConfig(originalConfig *config.RawConfig, addonConfig *config.RawConfig, mode string) (bs []byte, err error) {
+func composeConfig(originalConfig *config.RawConfig, addonConfig *config.RawConfig) (bs []byte, err error) {
 	if addonConfig == nil {
 		return yaml.Marshal(originalConfig)
 	}
-	originalConfig, err = composeProxyGroup(originalConfig, addonConfig, mode)
+	originalConfig, err = composeProxyGroup(originalConfig, addonConfig)
 	if err != nil {
 		return
 	}
-	originalConfig, err = composeRule(originalConfig, addonConfig, mode)
+	originalConfig, err = composeRule(originalConfig, addonConfig)
 	if err != nil {
 		return
 	}
@@ -165,7 +158,7 @@ func composeConfig(originalConfig *config.RawConfig, addonConfig *config.RawConf
 	return bs, err
 }
 
-func composeProxyGroup(originalConfig *config.RawConfig, addonConfig *config.RawConfig, mode string) (*config.RawConfig, error) {
+func composeProxyGroup(originalConfig *config.RawConfig, addonConfig *config.RawConfig) (*config.RawConfig, error) {
 	groupName2code := make(map[string]string)
 	// TODO: check group name conflicts
 	for _, mapping := range addonConfig.ProxyGroup {
@@ -207,35 +200,27 @@ func composeProxyGroup(originalConfig *config.RawConfig, addonConfig *config.Raw
 		}
 	}
 
-	switch strings.ToLower(mode) {
-	case modeInsert:
-		originalConfig.ProxyGroup = append(addonConfig.ProxyGroup, originalConfig.ProxyGroup...)
-	case modeAppend:
-		originalConfig.ProxyGroup = append(originalConfig.ProxyGroup, addonConfig.ProxyGroup...)
-	case modeUpdate:
-		for index, mapping := range originalConfig.ProxyGroup {
-			groupName, ok := mapping["name"].(string)
-			if !ok {
-				continue
-			}
-			if addonMapping, exist := groupName2addonMapping[groupName]; exist {
-				originalConfig.ProxyGroup[index] = addonMapping
-			}
+	// update existing proxy groups
+	for index, mapping := range originalConfig.ProxyGroup {
+		groupName, ok := mapping["name"].(string)
+		if !ok {
+			continue
 		}
+		if addonMapping, exist := groupName2addonMapping[groupName]; exist {
+			originalConfig.ProxyGroup[index] = addonMapping
+			delete(groupName2addonMapping, groupName)
+		}
+	}
+	// append remaining proxy groups
+	for _, mapping := range groupName2addonMapping {
+		originalConfig.ProxyGroup = append(originalConfig.ProxyGroup, mapping)
 	}
 
 	return originalConfig, nil
 }
 
-func composeRule(originalConfig *config.RawConfig, addonConfig *config.RawConfig, mode string) (*config.RawConfig, error) {
-	switch strings.ToLower(mode) {
-	case modeInsert:
-		originalConfig.Rule = append(addonConfig.Rule, originalConfig.Rule...)
-	case modeAppend:
-		originalConfig.Rule = append(originalConfig.Rule, addonConfig.Rule...)
-	case modeUpdate:
-		// TODO: support rule update
-	}
+func composeRule(originalConfig *config.RawConfig, addonConfig *config.RawConfig) (*config.RawConfig, error) {
+	originalConfig.Rule = append(addonConfig.Rule, originalConfig.Rule...)
 	return originalConfig, nil
 }
 
